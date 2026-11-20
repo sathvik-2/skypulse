@@ -1,4 +1,4 @@
-# 🌦️ NimbusFlow: Production Weather ETL Data Pipeline & Analytics Center
+# 🌦️ SkyPulse: Production Weather ETL Data Pipeline & Analytics Center
 
 An end-to-end, production-grade Data Engineering pipeline that extracts real-time meteorological observations across global cities, stages raw payloads in a Document Lake (MongoDB), transforms and type-cleans data using Pandas, and idempotently loads records into MySQL with duplicate-prevention constraints. Includes advanced SQL window analytics and an interactive web dashboard.
 

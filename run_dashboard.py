@@ -14,7 +14,7 @@ from app.server import app
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("🚀  LAUNCHING NIMBUSFLOW WEATHER PIPELINE DASHBOARD")
+    print("🚀  LAUNCHING SKYPULSE WEATHER DASHBOARD")
     print("=" * 60)
     print("✨  AI-Engineered Frontend is ready!")
     print("🌐  Open your browser at: http://localhost:5000")

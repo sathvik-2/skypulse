@@ -1,6 +1,6 @@
 # Weather Data Pipeline Configuration
 app:
-  name: "NimbusFlow Weather Pipeline"
+  name: "SkyPulse Weather Pipeline"
   version: "1.0.0"
   log_level: "INFO"
 
