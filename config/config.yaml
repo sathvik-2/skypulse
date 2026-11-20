@@ -1,0 +1,57 @@
+# Weather Data Pipeline Configuration
+app:
+  name: "NimbusFlow Weather Pipeline"
+  version: "1.0.0"
+  log_level: "INFO"
+
+paths:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  log_file: "logs/pipeline.log"
+
+api:
+  open_meteo_url: "https://api.open-meteo.com/v1/forecast"
+  timeout_seconds: 10
+  max_retries: 3
+  backoff_factor: 1.5
+  metrics: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
+
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    user: "root"
+    database: "weather_db"
+    # Password can also be loaded from MYSQL_PASSWORD in .env
+    password: "Sathvik@123"
+  mongodb:
+    host: "localhost"
+    port: 27017
+    database: "weather_lake"
+    collection: "raw_weather"
+
+cities:
+  - name: "Bengaluru"
+    country: "India"
+    lat: 12.9716
+    lon: 77.5946
+  - name: "Mangaluru"
+    country: "India"
+    lat: 12.9141
+    lon: 74.8560
+  - name: "London"
+    country: "UK"
+    lat: 51.5074
+    lon: -0.1278
+  - name: "New York"
+    country: "USA"
+    lat: 40.7128
+    lon: -74.0060
+  - name: "Tokyo"
+    country: "Japan"
+    lat: 35.6762
+    lon: 139.6503
+  - name: "Sydney"
+    country: "Australia"
+    lat: -33.8688
+    lon: 151.2093

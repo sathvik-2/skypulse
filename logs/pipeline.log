@@ -1,0 +1,46 @@
+[2026-11-20 19:18:12] [INFO] [transform]: Starting transformation: reading C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_normal_data0\mock_raw.json...
+[2026-11-20 19:18:12] [INFO] [transform]: Transformation complete! Cleaned 2 records (dropped 0 corrupt).
+[2026-11-20 19:18:12] [INFO] [transform]: Saved clean CSV to 'C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_normal_data0\clean_output.csv'
+[2026-11-20 19:18:12] [INFO] [transform]: Starting transformation: reading C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_corrupt_and_nul0\mock_corrupt.json...
+[2026-11-20 19:18:12] [INFO] [transform]: Transformation complete! Cleaned 1 records (dropped 1 corrupt).
+[2026-11-20 19:18:12] [INFO] [transform]: Saved clean CSV to 'C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_corrupt_and_nul0\clean_corrupt.csv'
+[2026-11-20 19:18:12] [INFO] [transform]: Starting transformation: reading C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_empty_file0\empty.json...
+[2026-11-20 19:18:12] [WARNING] [transform]: Raw data file 'C:\Users\Sathvik\AppData\Local\Temp\pytest-of-Sathvik\pytest-1\test_transform_empty_file0\empty.json' is empty.
+[2026-11-20 19:18:12] [INFO] [transform]: Starting transformation: reading non_existent_file.json...
+[2026-11-20 19:18:12] [ERROR] [transform]: Cannot transform: raw data file 'non_existent_file.json' does not exist.
+[2026-11-20 19:18:31] [INFO] [orchestrator]: === STEP 1 / 4: EXTRACTION ===
+[2026-11-20 19:18:31] [INFO] [extract]: Starting extraction for 6 cities...
+[2026-11-20 19:18:31] [INFO] [extract]: Fetching weather for Bengaluru (lat: 12.9716, lon: 77.5946)...
+[2026-11-20 19:18:32] [INFO] [extract]: Successfully fetched weather for Bengaluru (Status: 200)
+[2026-11-20 19:18:32] [INFO] [extract]: Fetching weather for Mangaluru (lat: 12.9141, lon: 74.856)...
+[2026-11-20 19:18:32] [INFO] [extract]: Successfully fetched weather for Mangaluru (Status: 200)
+[2026-11-20 19:18:32] [INFO] [extract]: Fetching weather for London (lat: 51.5074, lon: -0.1278)...
+[2026-11-20 19:18:33] [INFO] [extract]: Successfully fetched weather for London (Status: 200)
+[2026-11-20 19:18:33] [INFO] [extract]: Fetching weather for New York (lat: 40.7128, lon: -74.006)...
+[2026-11-20 19:18:33] [INFO] [extract]: Successfully fetched weather for New York (Status: 200)
+[2026-11-20 19:18:33] [INFO] [extract]: Fetching weather for Tokyo (lat: 35.6762, lon: 139.6503)...
+[2026-11-20 19:18:33] [INFO] [extract]: Successfully fetched weather for Tokyo (Status: 200)
+[2026-11-20 19:18:33] [INFO] [extract]: Fetching weather for Sydney (lat: -33.8688, lon: 151.2093)...
+[2026-11-20 19:18:33] [INFO] [extract]: Successfully fetched weather for Sydney (Status: 200)
+[2026-11-20 19:18:33] [INFO] [extract]: Saved 6 city records to data/raw\weather_raw.json
+[2026-11-20 19:18:33] [INFO] [extract]: Saved 6 city records to data/raw\weather_20261120_191833.json
+[2026-11-20 19:18:33] [INFO] [extract]: Extraction complete! Collected 6/6 cities.
+[2026-11-20 19:18:33] [INFO] [orchestrator]: === STEP 2 / 4: RAW DATA LAKE STAGING ===
+[2026-11-20 19:18:33] [INFO] [mongo_staging]: MongoDB Lake: Staged 6 raw documents into 'weather_lake.raw_weather'.
+[2026-11-20 19:18:33] [INFO] [orchestrator]: === STEP 3 / 4: TRANSFORMATION ===
+[2026-11-20 19:18:33] [INFO] [transform]: Starting transformation: reading data/raw\weather_raw.json...
+[2026-11-20 19:18:33] [INFO] [transform]: Transformation complete! Cleaned 6 records (dropped 0 corrupt).
+[2026-11-20 19:18:33] [INFO] [transform]: Saved clean CSV to 'data/processed\weather_clean.csv'
+[2026-11-20 19:18:33] [INFO] [orchestrator]: === STEP 4 / 4: RELATIONAL DATABASE LOAD ===
+[2026-11-20 19:18:33] [INFO] [load_sql]: Initializing MySQL database schema...
+[2026-11-20 19:18:33] [INFO] [load_sql]: Database and table 'weather_records' are verified and ready.
+[2026-11-20 19:18:34] [INFO] [load_sql]: Successfully upserted 6 records into MySQL (weather_db.weather_records)!
+[2026-11-20 19:18:34] [INFO] [load_sql]: Current verified records in MySQL:
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • Bengaluru: 2 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • London: 2 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • Mangaluru: 1 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • Mangaluru : 1 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • New York: 2 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • Sydney: 2 row(s)
+[2026-11-20 19:18:34] [INFO] [load_sql]:   • Tokyo: 2 row(s)
+[2026-11-20 19:18:34] [INFO] [orchestrator]: 🎉 PIPELINE RUN COMPLETED SUCCESSFULLY in 2.26s! (6 records processed)

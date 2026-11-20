@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Pipeline & Analytics Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        },
+                        dark: {
+                            950: '#090d16',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        code, pre {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-cyan {
+            box-shadow: 0 0 25px -5px rgba(20, 184, 166, 0.3);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-dark-950 text-slate-100 min-h-screen antialiased flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-slate-800/80 bg-dark-900/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                    <i data-lucide="cloud-rain" class="w-6 h-6 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-lg font-bold tracking-tight text-white">NimbusFlow</h1>
+                        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">v1.0 • AI-Engineered UI</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Weather ETL Data Pipeline & Analytics Center</p>
+                </div>
+            </div>
+
+            <!-- Header Controls & Live Clock -->
+            <div class="flex items-center space-x-4">
+                <div class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-slate-700/60 text-xs">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-slate-300 font-medium" id="live-clock">--:--:--</span>
+                </div>
+                <button onclick="fetchLiveData()" class="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all active:scale-95 shadow-md shadow-cyan-500/20">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="refresh-icon"></i>
+                    <span>Sync Live Weather</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        <!-- Top Metric KPI Banner -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Metric 1: Pipeline Stage -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold tracking-wider uppercase text-slate-400">Active Phase</span>
+                    <div class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
+                        <i data-lucide="cpu" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-2xl font-bold text-white">Weeks 1-2</div>
+                    <p class="text-xs text-cyan-400 mt-1 flex items-center gap-1">
+                        <i data-lucide="code-2" class="w-3.5 h-3.5"></i> Extract & API Requests
+                    </p>
+                </div>
+                <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-cyan-500/5 rounded-full blur-xl"></div>
+            </div>
+
+            <!-- Metric 2: Cities Monitored -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold tracking-wider uppercase text-slate-400">Target Cities</span>
+                    <div class="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                        <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-2xl font-bold text-white" id="stat-cities">5 Global Cities</div>
+                    <p class="text-xs text-indigo-400 mt-1 flex items-center gap-1">
+                        <i data-lucide="globe" class="w-3.5 h-3.5"></i> Open-Meteo API Feed
+                    </p>
+                </div>
+                <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-indigo-500/5 rounded-full blur-xl"></div>
+            </div>
+
+            <!-- Metric 3: Ingestion Status -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold tracking-wider uppercase text-slate-400">Raw Snapshots</span>
+                    <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                        <i data-lucide="file-json" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-2xl font-bold text-white" id="stat-raw-files">0 Files</div>
+                    <p class="text-xs text-slate-400 mt-1" id="stat-raw-subtext">Waiting for extract.py run</p>
+                </div>
+                <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-emerald-500/5 rounded-full blur-xl"></div>
+            </div>
+
+            <!-- Metric 4: Database Ready -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold tracking-wider uppercase text-slate-400">Clean Tables</span>
+                    <div class="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                        <i data-lucide="database" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-2xl font-bold text-white" id="stat-clean-files">0 Rows Loaded</div>
+                    <p class="text-xs text-amber-400/90 mt-1 flex items-center gap-1">
+                        <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Scheduled for Week 3-5
+                    </p>
+                </div>
+                <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-amber-500/5 rounded-full blur-xl"></div>
+            </div>
+        </div>
+
+        <!-- Live Monitored Cities Grid -->
+        <div>
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="radio" class="w-5 h-5 text-cyan-400"></i>
+                        Live Weather Stream
+                    </h2>
+                    <p class="text-xs text-slate-400">Current observations from Open-Meteo across your target pipeline locations</p>
+                </div>
+                <span class="text-xs font-medium text-slate-500">Auto-updates on sync</span>
+            </div>
+
+            <div id="city-cards-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <!-- Dynamically populated by JS -->
+                <div class="glass-card rounded-xl p-5 animate-pulse text-center text-slate-500 text-xs">
+                    Loading city feeds...
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section (Analytics & Trends Preview) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Chart: Temperature Trends (2 Cols) -->
+            <div class="lg:col-span-2 glass-card rounded-2xl p-6">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-2">
+                    <div>
+                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-cyan-400"></i>
+                            14-Day Temperature Historical Trend (°C)
+                        </h3>
+                        <p class="text-xs text-slate-400">Time-series data for comparison across cities</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="inline-block w-3 h-3 rounded-full bg-cyan-400"></span>
+                        <span class="text-slate-300">Bengaluru</span>
+                        <span class="inline-block w-3 h-3 rounded-full bg-indigo-400 ml-2"></span>
+                        <span class="text-slate-300">New York</span>
+                    </div>
+                </div>
+                <div class="relative h-72 w-full">
+                    <canvas id="tempTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Right Chart: 7-Day Rolling Average Window Function (1 Col) -->
+            <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                            <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                            7-Day Rolling Avg
+                        </h3>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SQL Preview</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">
+                        Visualizing the SQL window function you'll write in <strong>Week 11</strong>:
+                        <code class="block mt-2 p-2 rounded bg-dark-950 text-emerald-400 text-[11px] leading-relaxed">
+                            AVG(temp) OVER (<br>
+                            &nbsp;&nbsp;ORDER BY date<br>
+                            &nbsp;&nbsp;ROWS BETWEEN 6 PRECEDING<br>
+                            &nbsp;&nbsp;AND CURRENT ROW<br>
+                            )
+                        </code>
+                    </p>
+                </div>
+                <div class="relative h-44 w-full">
+                    <canvas id="rollingAvgChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Data Payload Inspector & Pipeline Tester -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Left: Raw JSON Inspector -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i data-lucide="file-code" class="w-5 h-5 text-cyan-400"></i>
+                        <h3 class="text-base font-bold text-white">Raw JSON Payload Inspector</h3>
+                    </div>
+                    <span id="raw-file-badge" class="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-slate-300 border border-slate-700">Checking data/raw/</span>
+                </div>
+                <p class="text-xs text-slate-400 mb-3">
+                    As you write <code class="text-cyan-400">extract.py</code>, save your JSON files into <code class="text-slate-300">data/raw/</code>. The latest payload will instantly render below!
+                </p>
+                <div class="relative rounded-xl bg-dark-950 p-4 border border-slate-800 h-64 overflow-auto text-xs text-slate-300">
+                    <pre id="raw-json-code">Loading raw payload...</pre>
+                </div>
+            </div>
+
+            <!-- Right: Interactive API Sandbox & Coordinates Tester -->
+            <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="terminal" class="w-5 h-5 text-indigo-400"></i>
+                            <h3 class="text-base font-bold text-white">Interactive API Sandbox</h3>
+                        </div>
+                        <span class="text-xs text-slate-500">Live Test</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">
+                        Test any coordinates right now to see the exact structure Open-Meteo returns before writing your function:
+                    </p>
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Latitude</label>
+                            <input id="input-lat" type="number" step="0.0001" value="12.9716" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Longitude</label>
+                            <input id="input-lon" type="number" step="0.0001" value="77.5946" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+
+                    <button onclick="testCustomCoords()" class="w-full py-2.5 px-4 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/20 active:scale-98">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                        <span>Fetch API Response Directly</span>
+                    </button>
+                </div>
+
+                <div id="sandbox-result" class="mt-4 p-3 rounded-lg bg-dark-950 border border-slate-800 text-[11px] text-slate-400 h-24 overflow-auto">
+                    Click "Fetch API Response Directly" to inspect live response.
+                </div>
+            </div>
+        </div>
+
+        <!-- 12-Week Roadmap Progress Grid -->
+        <div class="glass-card rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i data-lucide="git-commit" class="w-5 h-5 text-cyan-400"></i>
+                        12-Week Engineering Roadmap Tracker
+                    </h3>
+                    <p class="text-xs text-slate-400">Track your progress from API extraction to full automated pipeline</p>
+                </div>
+                <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Week 1 of 12</span>
+            </div>
+
+            <div id="roadmap-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Dynamically loaded from /api/status -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 bg-dark-900/60 py-6 text-center text-xs text-slate-500">
+        <p>Built with ❤️ by Antigravity AI for your Data Engineering Portfolio • Connected to Open-Meteo & Flask</p>
+    </footer>
+
+    <!-- Client-Side Dashboard Logic -->
+    <script>
+        let tempChartInstance = null;
+        let rollingChartInstance = null;
+
+        // Initialize icons
+        function initIcons() {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+
+        // Live Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toLocaleTimeString() + ' Local';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Fetch Pipeline Status
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                document.getElementById('stat-raw-files').innerText = `${data.raw_files_count} Snapshots`;
+                document.getElementById('stat-clean-files').innerText = `${data.clean_files_count} Clean CSVs`;
+                
+                if (data.raw_files_count > 0) {
+                    document.getElementById('stat-raw-subtext').innerText = 'Data available in data/raw/';
+                }
+
+                // Render Roadmap Grid
+                const roadmapContainer = document.getElementById('roadmap-grid');
+                roadmapContainer.innerHTML = '';
+
+                data.stages.forEach(stage => {
+                    const isCurrent = stage.week.includes('1-2');
+                    const badgeClass = isCurrent 
+                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-bold animate-pulse'
+                        : 'bg-slate-800 text-slate-400 border-slate-700';
+
+                    const card = document.createElement('div');
+                    card.className = `p-4 rounded-xl border ${isCurrent ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800/80 bg-dark-900/40'} flex flex-col justify-between`;
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[11px] font-semibold text-slate-400">${stage.week}</span>
+                                <span class="px-2 py-0.5 text-[10px] rounded-full border ${badgeClass}">${stage.status}</span>
+                            </div>
+                            <h4 class="text-sm font-bold text-white mb-1">${stage.name}</h4>
+                            <p class="text-xs text-slate-400 leading-relaxed">${stage.description}</p>
+                        </div>
+                    `;
+                    roadmapContainer.appendChild(card);
+                });
+
+                initIcons();
+            } catch (err) {
+                console.error("Status fetch error:", err);
+            }
+        }
+
+        // Fetch Live Weather Cards
+        async function fetchLiveData() {
+            const refreshIcon = document.getElementById('refresh-icon');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+            try {
+                const res = await fetch('/api/live_weather');
+                const cities = await res.json();
+                
+                const grid = document.getElementById('city-cards-grid');
+                grid.innerHTML = '';
+
+                cities.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = "glass-card rounded-xl p-4 flex flex-col justify-between hover:border-cyan-500/30 transition-all";
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-bold text-white">${c.city}</h4>
+                                <span class="text-[10px] text-slate-400">${c.country}</span>
+                            </div>
+                            <div class="mt-3 flex items-baseline gap-1">
+                                <span class="text-2xl font-extrabold text-cyan-400">${c.temperature !== undefined ? c.temperature : '--'}</span>
+                                <span class="text-xs text-slate-400 font-medium">°C</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] space-y-1 text-slate-400">
+                            <div class="flex justify-between">
+                                <span>Humidity:</span>
+                                <span class="text-slate-200 font-medium">${c.humidity || 0}%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Rain:</span>
+                                <span class="text-slate-200 font-medium">${c.precipitation || 0} mm</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Wind:</span>
+                                <span class="text-slate-200 font-medium">${c.wind_speed || 0} km/h</span>
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                console.error("Live weather error:", err);
+            } finally {
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                initIcons();
+            }
+        }
+
+        // Fetch Raw Preview
+        async function fetchRawPreview() {
+            try {
+                const res = await fetch('/api/raw_preview');
+                const data = await res.json();
+                
+                const badge = document.getElementById('raw-file-badge');
+                const pre = document.getElementById('raw-json-code');
+
+                if (data.found) {
+                    badge.innerText = data.filename;
+                    badge.className = "px-2.5 py-1 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+                    pre.innerText = JSON.stringify(data.data, null, 2);
+                } else {
+                    badge.innerText = "No file in data/raw/";
+                    badge.className = "px-2.5 py-1 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30";
+                    pre.innerText = "// " + data.message + "\n\n// Sample expected payload:\n" + JSON.stringify(data.sample, null, 2);
+                }
+            } catch (err) {
+                console.error("Raw preview error:", err);
+            }
+        }
+
+        // Interactive API Sandbox
+        async function testCustomCoords() {
+            const lat = document.getElementById('input-lat').value;
+            const lon = document.getElementById('input-lon').value;
+            const resBox = document.getElementById('sandbox-result');
+            resBox.innerHTML = '<span class="text-cyan-400">Querying Open-Meteo...</span>';
+
+            try {
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation`;
+                const res = await fetch(url);
+                const data = await res.json();
+                resBox.innerHTML = `<pre class="text-emerald-400 font-mono text-[10px]">${JSON.stringify(data.current, null, 2)}</pre>`;
+            } catch (err) {
+                resBox.innerHTML = `<span class="text-rose-400">Error: ${err.message}</span>`;
+            }
+        }
+
+        // Initialize Charts
+        async function initCharts() {
+            try {
+                const res = await fetch('/api/analytics/trends');
+                const data = await res.json();
+
+                // 1. Trend Chart
+                const ctx1 = document.getElementById('tempTrendChart').getContext('2d');
+                if (tempChartInstance) tempChartInstance.destroy();
+
+                tempChartInstance = new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates.map(d => d.slice(5)),
+                        datasets: [
+                            {
+                                label: 'Bengaluru',
+                                data: data.cities.Bengaluru,
+                                borderColor: '#14b8a6',
+                                backgroundColor: 'rgba(20, 184, 166, 0.1)',
+                                tension: 0.35,
+                                fill: true,
+                                pointRadius: 3
+                            },
+                            {
+                                label: 'New York',
+                                data: data.cities['New York'],
+                                borderColor: '#818cf8',
+                                backgroundColor: 'transparent',
+                                tension: 0.35,
+                                borderDash: [4, 4],
+                                pointRadius: 3
+                            },
+                            {
+                                label: 'London',
+                                data: data.cities.London,
+                                borderColor: '#f59e0b',
+                                backgroundColor: 'transparent',
+                                tension: 0.35,
+                                pointRadius: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: '#64748b', font: { size: 10 } }
+                            },
+                            y: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: '#64748b', font: { size: 10 } }
+                            }
+                        }
+                    }
+                });
+
+                // 2. Rolling Average Chart
+                const ctx2 = document.getElementById('rollingAvgChart').getContext('2d');
+                if (rollingChartInstance) rollingChartInstance.destroy();
+
+                rollingChartInstance = new Chart(ctx2, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates.slice(-7).map(d => d.slice(5)),
+                        datasets: [
+                            {
+                                label: '7-Day Rolling Avg',
+                                data: data.rolling_average_7d.values.slice(-7),
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 4,
+                                pointBackgroundColor: '#10b981'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#64748b', font: { size: 9 } }
+                            },
+                            y: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: '#64748b', font: { size: 9 } }
+                            }
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error("Charts error:", err);
+            }
+        }
+
+        // Initial Load
+        window.addEventListener('DOMContentLoaded', () => {
+            initIcons();
+            fetchStatus();
+            fetchLiveData();
+            fetchRawPreview();
+            initCharts();
+        });
+    </script>
+</body>
+</html>
