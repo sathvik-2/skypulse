@@ -1,7 +1,7 @@
 """
-Nimbus Weather - Consumer-Facing Interactive Weather Web App Backend
+SkyPulse Weather - Consumer-Facing Interactive Weather Web App Backend
 Supports global city search, live atmospheric observations, 24-hour hourly forecast,
-7-day daily outlook, real-time AQI via Open-Meteo Air Quality API, and MySQL auto-ingestion.
+7-day daily outlook, dual AQI standards (Indian CPCB/aqi.in + US EPA), and MySQL auto-ingestion.
 """
 
 import os
@@ -42,61 +42,176 @@ WEATHER_CODE_MAP = {
 def get_weather_info(code):
     return WEATHER_CODE_MAP.get(code, {"label": "Clear", "icon": "sun", "color": "text-amber-400"})
 
-def get_aqi_details(aqi_val):
-    """Categorizes US AQI index (0-500) into standard EPA health brackets."""
+def calc_cpcb_subindex(conc, breakpoints):
+    """Calculates linear sub-index for Indian CPCB National AQI."""
+    for (c_low, c_high, i_low, i_high) in breakpoints:
+        if c_low <= conc <= c_high:
+            return i_low + ((i_high - i_low) / (c_high - c_low)) * (conc - c_low)
+    # Beyond highest breakpoint
+    if conc > breakpoints[-1][1]:
+        return 500
+    return 0
+
+def calculate_indian_cpcb_aqi(pm25, pm10):
+    """
+    Calculates Indian National Air Quality Index (NAQI) as defined by CPCB (used by aqi.in).
+    """
+    pm25_bp = [
+        (0, 30, 0, 50),
+        (31, 60, 51, 100),
+        (61, 90, 101, 200),
+        (91, 120, 201, 300),
+        (121, 250, 301, 400),
+        (251, 350, 401, 500)
+    ]
+    pm10_bp = [
+        (0, 50, 0, 50),
+        (51, 100, 51, 100),
+        (101, 250, 101, 200),
+        (251, 350, 201, 300),
+        (351, 430, 301, 400),
+        (431, 500, 401, 500)
+    ]
+
+    i_pm25 = calc_cpcb_subindex(pm25, pm25_bp)
+    i_pm10 = calc_cpcb_subindex(pm10, pm10_bp)
+
+    aqi_val = round(max(i_pm25, i_pm10))
+
     if aqi_val <= 50:
         return {
+            "value": aqi_val,
             "status": "Good",
             "text_color": "text-emerald-400",
             "bg_color": "bg-emerald-500/10",
             "border_color": "border-emerald-500/30",
-            "desc": "Air quality is clean and satisfactory with little to no health risk.",
-            "percent": min(100, int((aqi_val / 300) * 100))
+            "desc": "Air quality is good. Minimal impact on health.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "Indian CPCB (aqi.in standard)"
         }
     elif aqi_val <= 100:
         return {
+            "value": aqi_val,
+            "status": "Satisfactory",
+            "text_color": "text-emerald-300",
+            "bg_color": "bg-emerald-500/10",
+            "border_color": "border-emerald-500/30",
+            "desc": "Minor breathing discomfort to sensitive people. Satisfactory for general public.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "Indian CPCB (aqi.in standard)"
+        }
+    elif aqi_val <= 200:
+        return {
+            "value": aqi_val,
             "status": "Moderate",
             "text_color": "text-yellow-400",
             "bg_color": "bg-yellow-500/10",
             "border_color": "border-yellow-500/30",
-            "desc": "Acceptable quality; very sensitive individuals may feel minor respiratory symptoms.",
-            "percent": min(100, int((aqi_val / 300) * 100))
+            "desc": "Breathing discomfort to people with lung, asthma and heart diseases.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "Indian CPCB (aqi.in standard)"
+        }
+    elif aqi_val <= 300:
+        return {
+            "value": aqi_val,
+            "status": "Poor",
+            "text_color": "text-orange-400",
+            "bg_color": "bg-orange-500/10",
+            "border_color": "border-orange-500/30",
+            "desc": "Breathing discomfort to most people on prolonged exposure.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "Indian CPCB (aqi.in standard)"
+        }
+    elif aqi_val <= 400:
+        return {
+            "value": aqi_val,
+            "status": "Very Poor",
+            "text_color": "text-rose-400",
+            "bg_color": "bg-rose-500/10",
+            "border_color": "border-rose-500/30",
+            "desc": "Respiratory illness on prolonged exposure. Pronounced effect on lung patients.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "Indian CPCB (aqi.in standard)"
+        }
+    else:
+        return {
+            "value": aqi_val,
+            "status": "Severe",
+            "text_color": "text-red-500",
+            "bg_color": "bg-red-950/40",
+            "border_color": "border-red-500/50",
+            "desc": "Affects healthy people and seriously impacts those with existing diseases.",
+            "percent": 100,
+            "standard_name": "Indian CPCB (aqi.in standard)"
+        }
+
+def get_us_aqi_details(aqi_val):
+    """Categorizes US EPA AQI index (0-500)."""
+    if aqi_val <= 50:
+        return {
+            "value": aqi_val,
+            "status": "Good",
+            "text_color": "text-emerald-400",
+            "bg_color": "bg-emerald-500/10",
+            "border_color": "border-emerald-500/30",
+            "desc": "Air quality is satisfactory with little to no risk.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "US EPA Standard"
+        }
+    elif aqi_val <= 100:
+        return {
+            "value": aqi_val,
+            "status": "Moderate",
+            "text_color": "text-yellow-400",
+            "bg_color": "bg-yellow-500/10",
+            "border_color": "border-yellow-500/30",
+            "desc": "Acceptable air quality; very sensitive people may feel mild irritation.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "US EPA Standard"
         }
     elif aqi_val <= 150:
         return {
+            "value": aqi_val,
             "status": "Unhealthy for Sensitive Groups",
             "text_color": "text-orange-400",
             "bg_color": "bg-orange-500/10",
             "border_color": "border-orange-500/30",
-            "desc": "Members of sensitive groups may experience health effects. General public less affected.",
-            "percent": min(100, int((aqi_val / 300) * 100))
+            "desc": "Members of sensitive groups may experience health effects.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "US EPA Standard"
         }
     elif aqi_val <= 200:
         return {
+            "value": aqi_val,
             "status": "Unhealthy",
             "text_color": "text-rose-400",
             "bg_color": "bg-rose-500/10",
             "border_color": "border-rose-500/30",
-            "desc": "Everyone may begin to experience adverse health effects. Limit outdoor exertion.",
-            "percent": min(100, int((aqi_val / 300) * 100))
+            "desc": "Everyone may begin to experience adverse health effects.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "US EPA Standard"
         }
     elif aqi_val <= 300:
         return {
+            "value": aqi_val,
             "status": "Very Unhealthy",
             "text_color": "text-purple-400",
             "bg_color": "bg-purple-500/10",
             "border_color": "border-purple-500/30",
-            "desc": "Health alert: The risk of health effects is substantially increased for everyone.",
-            "percent": min(100, int((aqi_val / 300) * 100))
+            "desc": "Health alert: The risk of health effects is substantially increased.",
+            "percent": min(100, int((aqi_val / 300) * 100)),
+            "standard_name": "US EPA Standard"
         }
     else:
         return {
+            "value": aqi_val,
             "status": "Hazardous",
             "text_color": "text-red-500",
             "bg_color": "bg-red-950/40",
             "border_color": "border-red-500/50",
-            "desc": "Health warning of emergency conditions. Entire population is more likely to be affected.",
-            "percent": 100
+            "desc": "Health warning of emergency conditions.",
+            "percent": 100,
+            "standard_name": "US EPA Standard"
         }
 
 def save_to_db(city, dt, temp, humidity, precipitation):
@@ -165,7 +280,7 @@ def search_cities():
 @app.route("/api/weather")
 def get_weather():
     """
-    Fetches weather from Open-Meteo Weather API + Air Quality from Open-Meteo Air Quality API.
+    Fetches real-time weather & dual AQI (Indian CPCB and US EPA).
     """
     lat = request.args.get("lat", type=float)
     lon = request.args.get("lon", type=float)
@@ -175,7 +290,7 @@ def get_weather():
         lat, lon, city_name = 12.9716, 77.5946, "Bengaluru"
 
     try:
-        # 1. Fetch Weather Forecast from Open-Meteo Weather API
+        # 1. Weather Forecast
         weather_url = "https://api.open-meteo.com/v1/forecast"
         weather_params = {
             "latitude": lat,
@@ -188,7 +303,7 @@ def get_weather():
         }
         res_weather = requests.get(weather_url, params=weather_params, timeout=6)
         if res_weather.status_code != 200:
-            return jsonify({"error": "Failed to fetch weather data from Open-Meteo API"}), 500
+            return jsonify({"error": "Failed to fetch weather data"}), 500
 
         data = res_weather.json()
         current = data.get("current", {})
@@ -198,21 +313,13 @@ def get_weather():
         weather_code = current.get("weather_code", 0)
         weather_info = get_weather_info(weather_code)
 
-        # 2. Fetch Air Quality Index from Open-Meteo Air Quality API
-        aqi_data = {
-            "value": 45,
-            "status": "Good",
-            "text_color": "text-emerald-400",
-            "bg_color": "bg-emerald-500/10",
-            "border_color": "border-emerald-500/30",
-            "desc": "Air quality is satisfactory with little to no risk.",
-            "pm2_5": 12.0,
-            "pm10": 25.0,
-            "no2": 15.0,
-            "o3": 30.0,
-            "percent": 15,
-            "api_name": "Open-Meteo Air Quality API"
-        }
+        # 2. Air Quality Index (Both Indian CPCB & US EPA)
+        pm2_5_val = 25.0
+        pm10_val = 40.0
+        no2_val = 15.0
+        o3_val = 30.0
+        raw_us_aqi = 65
+
         try:
             aqi_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
             aqi_params = {
@@ -223,27 +330,29 @@ def get_weather():
             res_aqi = requests.get(aqi_url, params=aqi_params, timeout=4)
             if res_aqi.status_code == 200:
                 aqi_curr = res_aqi.json().get("current", {})
-                raw_aqi = aqi_curr.get("us_aqi")
-                if raw_aqi is not None:
-                    cat = get_aqi_details(int(raw_aqi))
-                    aqi_data = {
-                        "value": int(raw_aqi),
-                        "status": cat["status"],
-                        "text_color": cat["text_color"],
-                        "bg_color": cat["bg_color"],
-                        "border_color": cat["border_color"],
-                        "desc": cat["desc"],
-                        "percent": cat["percent"],
-                        "pm2_5": round(aqi_curr.get("pm2_5", 0.0), 1),
-                        "pm10": round(aqi_curr.get("pm10", 0.0), 1),
-                        "no2": round(aqi_curr.get("nitrogen_dioxide", 0.0), 1),
-                        "o3": round(aqi_curr.get("ozone", 0.0), 1),
-                        "api_name": "Open-Meteo Air Quality API (Copernicus CAMS & NOAA GFS)"
-                    }
+                pm2_5_val = round(aqi_curr.get("pm2_5", 25.0), 1)
+                pm10_val = round(aqi_curr.get("pm10", 40.0), 1)
+                no2_val = round(aqi_curr.get("nitrogen_dioxide", 15.0), 1)
+                o3_val = round(aqi_curr.get("ozone", 30.0), 1)
+                raw_us_aqi = int(aqi_curr.get("us_aqi", 65))
         except Exception:
-            pass  # Fallback to default safe data
+            pass
 
-        # Build clean current object
+        # Calculate Indian CPCB standard (matches aqi.in)
+        cpcb_aqi_details = calculate_indian_cpcb_aqi(pm2_5_val, pm10_val)
+        # Calculate US EPA standard
+        us_aqi_details = get_us_aqi_details(raw_us_aqi)
+
+        aqi_payload = {
+            "indian": cpcb_aqi_details,
+            "us": us_aqi_details,
+            "pm2_5": pm2_5_val,
+            "pm10": pm10_val,
+            "no2": no2_val,
+            "o3": o3_val
+        }
+
+        # Build current weather object
         current_obj = {
             "city": city_name,
             "temperature": round(current.get("temperature_2m", 0.0), 1),
@@ -330,7 +439,7 @@ def get_weather():
 
         return jsonify({
             "current": current_obj,
-            "aqi": aqi_data,
+            "aqi": aqi_payload,
             "hourly": hourly_list,
             "daily": daily_list
         })

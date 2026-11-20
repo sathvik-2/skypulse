@@ -59,7 +59,7 @@
             background: linear-gradient(90deg, #38bdf8 0%, #34d399 40%, #fbbf24 75%, #f87171 100%);
         }
         .aqi-gauge-bg {
-            background: linear-gradient(90deg, #10b981 0%, #facc15 25%, #fb923c 50%, #f87171 75%, #c084fc 100%);
+            background: linear-gradient(90deg, #10b981 0%, #34d399 25%, #facc15 50%, #fb923c 75%, #f87171 90%, #c084fc 100%);
         }
     </style>
 </head>
@@ -221,46 +221,55 @@
             </div>
         </div>
 
-        <!-- Bento Grid: Key Atmospheric Metrics + AIR QUALITY INDEX (AQI) -->
+        <!-- Bento Grid: Key Atmospheric Metrics + DUAL AQI (Indian CPCB / aqi.in + US EPA) -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <!-- Air Quality Index (AQI) Card - Spans 2 columns on desktop -->
             <div class="lg:col-span-2 glass-panel rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden">
                 <div>
-                    <div class="flex items-center justify-between">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div class="flex items-center space-x-2">
-                            <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400" id="aqi-icon-badge">
+                            <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
                                 <i data-lucide="wind" class="w-5 h-5"></i>
                             </div>
                             <div>
                                 <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Air Quality Index (AQI)</h4>
-                                <span class="text-[10px] text-cyan-400 font-medium" id="aqi-api-source">Powered by Open-Meteo Air Quality API</span>
+                                <span class="text-[10px] text-cyan-400 font-medium" id="aqi-current-standard-label">Indian National AQI (CPCB / aqi.in)</span>
                             </div>
                         </div>
-                        <!-- Status Badge -->
-                        <span id="aqi-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            Moderate
-                        </span>
+
+                        <!-- Standard Switcher Button (Indian vs US) -->
+                        <div class="inline-flex rounded-lg bg-dark-900 border border-slate-700/80 p-0.5 text-[11px] font-semibold">
+                            <button id="btn-aqi-indian" onclick="setAqiStandard('indian')" class="px-2.5 py-1 rounded-md bg-cyan-500 text-slate-950 font-bold transition-all">
+                                🇮🇳 Indian (aqi.in)
+                            </button>
+                            <button id="btn-aqi-us" onclick="setAqiStandard('us')" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition-all">
+                                🇺🇸 US EPA
+                            </button>
+                        </div>
                     </div>
 
                     <div class="mt-4 flex items-baseline space-x-3">
-                        <span id="aqi-value" class="text-4xl font-extrabold text-white">128</span>
-                        <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">US AQI</span>
-                        <p class="text-xs text-slate-300 ml-auto" id="aqi-description">Acceptable quality</p>
+                        <span id="aqi-value" class="text-4xl font-extrabold text-white">97</span>
+                        <!-- Status Badge -->
+                        <span id="aqi-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                            Satisfactory
+                        </span>
+                        <p class="text-xs text-slate-300 ml-auto hidden sm:block" id="aqi-description">Satisfactory air quality</p>
                     </div>
 
                     <!-- Visual AQI Gauge Bar -->
                     <div class="mt-4">
                         <div class="h-2 w-full aqi-gauge-bg rounded-full relative overflow-visible">
-                            <!-- Indicator marker -->
-                            <div id="aqi-marker" class="absolute -top-1 w-4 h-4 bg-white border-2 border-slate-900 rounded-full shadow-lg transition-all duration-500" style="left: 40%;"></div>
+                            <div id="aqi-marker" class="absolute -top-1 w-4 h-4 bg-white border-2 border-slate-900 rounded-full shadow-lg transition-all duration-500" style="left: 32%;"></div>
                         </div>
                         <div class="flex justify-between text-[10px] text-slate-500 font-semibold mt-1">
                             <span>0 Good</span>
-                            <span>50 Mod</span>
-                            <span>100 Sens</span>
-                            <span>150 Unhealthy</span>
-                            <span>200+ Haz</span>
+                            <span>50 Sat</span>
+                            <span>100 Mod</span>
+                            <span>200 Poor</span>
+                            <span>300 V.Poor</span>
+                            <span>400+ Sev</span>
                         </div>
                     </div>
                 </div>
@@ -364,7 +373,8 @@
     <footer class="border-t border-slate-800/80 bg-dark-900/60 py-6 text-center text-xs text-slate-500">
         <p>
             SkyPulse • Weather data via <a href="https://open-meteo.com/" target="_blank" class="text-cyan-400 hover:underline">Open-Meteo Weather API</a> 
-            • Air Quality via <a href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" class="text-cyan-400 hover:underline">Open-Meteo Air Quality API (Copernicus CAMS & NOAA GFS)</a>
+            • Air Quality via <a href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" class="text-cyan-400 hover:underline">Open-Meteo Air Quality API</a> 
+            • Supports Indian CPCB NAQI (matching <a href="https://www.aqi.in/" target="_blank" class="text-cyan-400 hover:underline">aqi.in</a>) & US EPA Standards
             • MySQL Pipeline Persistence
         </p>
     </footer>
@@ -375,6 +385,7 @@
         let currentCityData = null;
         let chartInstance = null;
         let searchTimeout = null;
+        let activeAqiStandard = 'indian'; // Default to Indian CPCB standard (matches aqi.in)
 
         let currentLat = 12.9716;
         let currentLon = 77.5946;
@@ -401,6 +412,49 @@
             if (currentCityData) {
                 renderWeatherData(currentCityData);
             }
+        }
+
+        function setAqiStandard(standard) {
+            activeAqiStandard = standard;
+            const btnIndian = document.getElementById('btn-aqi-indian');
+            const btnUs = document.getElementById('btn-aqi-us');
+
+            if (standard === 'indian') {
+                btnIndian.className = "px-2.5 py-1 rounded-md bg-cyan-500 text-slate-950 font-bold transition-all";
+                btnUs.className = "px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition-all";
+                document.getElementById('aqi-current-standard-label').innerText = "Indian National AQI (CPCB / aqi.in)";
+            } else {
+                btnUs.className = "px-2.5 py-1 rounded-md bg-cyan-500 text-slate-950 font-bold transition-all";
+                btnIndian.className = "px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition-all";
+                document.getElementById('aqi-current-standard-label').innerText = "US EPA National AQI Standard";
+            }
+
+            if (currentCityData) {
+                renderAqiSection(currentCityData.aqi);
+            }
+        }
+
+        function renderAqiSection(aqi) {
+            if (!aqi) return;
+
+            const selectedDetails = (activeAqiStandard === 'indian') ? aqi.indian : aqi.us;
+
+            document.getElementById('aqi-value').innerText = selectedDetails.value;
+            document.getElementById('aqi-description').innerText = selectedDetails.desc;
+            
+            const badge = document.getElementById('aqi-status-badge');
+            badge.innerText = selectedDetails.status;
+            badge.className = `px-3 py-1 rounded-full text-xs font-bold ${selectedDetails.bg_color} ${selectedDetails.text_color} border ${selectedDetails.border_color}`;
+
+            // Gauge marker position
+            const marker = document.getElementById('aqi-marker');
+            marker.style.left = `${Math.min(95, Math.max(5, selectedDetails.percent))}%`;
+
+            // Pollutants
+            document.getElementById('pollutant-pm25').innerText = `${aqi.pm2_5} µg`;
+            document.getElementById('pollutant-pm10').innerText = `${aqi.pm10} µg`;
+            document.getElementById('pollutant-no2').innerText = `${aqi.no2} µg`;
+            document.getElementById('pollutant-o3').innerText = `${aqi.o3} µg`;
         }
 
         async function loadCity(name, lat, lon) {
@@ -443,7 +497,6 @@
 
         function renderWeatherData(data) {
             const cur = data.current;
-            const aqi = data.aqi;
 
             // 1. Hero Section
             document.getElementById('current-city').innerText = cur.city;
@@ -465,25 +518,8 @@
             document.getElementById('hero-sunrise').innerText = cur.sunrise || "--";
             document.getElementById('hero-sunset').innerText = cur.sunset || "--";
 
-            // 2. Air Quality Index (AQI)
-            if (aqi) {
-                document.getElementById('aqi-value').innerText = aqi.value;
-                document.getElementById('aqi-description').innerText = aqi.desc;
-                
-                const badge = document.getElementById('aqi-status-badge');
-                badge.innerText = aqi.status;
-                badge.className = `px-3 py-1 rounded-full text-xs font-bold ${aqi.bg_color} ${aqi.text_color} border ${aqi.border_color}`;
-
-                // Position gauge marker
-                const marker = document.getElementById('aqi-marker');
-                marker.style.left = `${Math.min(95, Math.max(5, aqi.percent))}%`;
-
-                // Pollutants
-                document.getElementById('pollutant-pm25').innerText = `${aqi.pm2_5} µg`;
-                document.getElementById('pollutant-pm10').innerText = `${aqi.pm10} µg`;
-                document.getElementById('pollutant-no2').innerText = `${aqi.no2} µg`;
-                document.getElementById('pollutant-o3').innerText = `${aqi.o3} µg`;
-            }
+            // 2. Air Quality Index
+            renderAqiSection(data.aqi);
 
             // 3. Atmospheric Metrics
             document.getElementById('metric-humidity').innerText = `${cur.humidity}%`;
