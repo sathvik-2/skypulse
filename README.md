@@ -72,9 +72,6 @@ python_pipline_project/
 │   ├── transform.py            # Pandas normalization & schema cleaning
 │   ├── load_sql.py             # MySQL idempotent upsert loader
 │   └── analytics.py            # Python SQL analytics runner
-├── scripts/
-│   ├── run_pipeline.bat        # Automated batch runner for Windows
-│   └── register_windows_task.ps1 # Task Scheduler automated registration
 ├── sql/
 │   ├── schema.sql              # MySQL DDL table definition & unique constraints
 │   └── analytics.sql           # Aggregations, rankings & window functions
@@ -164,18 +161,6 @@ SELECT city, date, temperature AS peak_temperature_c
 FROM RankedWeather
 WHERE temp_rank = 1;
 ```
-
----
-
-## ⏰ Windows Task Scheduler Automation
-
-To automate daily ingestion every morning at 8:00 AM:
-1. Open PowerShell as Administrator.
-2. Run:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\register_windows_task.ps1
-   ```
-3. Execution logs will continuously append to `logs\scheduler.log`.
 
 ---
 
