@@ -1,189 +1,242 @@
 """
-Weather Data Pipeline - AI Web Dashboard Server
-Directly connected to MySQL (weather_db.weather_records), MongoDB, and Open-Meteo API.
+Nimbus Weather - Consumer-Facing Interactive Weather Web App Backend
+Supports global city search, live atmospheric observations, 24-hour hourly forecast,
+7-day daily outlook, and auto-ingestion into MySQL.
 """
 
 import os
-import json
-import glob
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
-import pymysql
 import requests
+import pymysql
 
 from pipeline.utils.config import load_config
 
 app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW_DATA_DIR = os.path.join(BASE_DIR, "data", "raw")
-PROCESSED_DATA_DIR = os.path.join(BASE_DIR, "data", "processed")
+# Weather code mapping to friendly text and Lucide icon names
+WEATHER_CODE_MAP = {
+    0: {"label": "Clear Sky", "icon": "sun", "color": "text-amber-400"},
+    1: {"label": "Mainly Clear", "icon": "sun-medium", "color": "text-amber-300"},
+    2: {"label": "Partly Cloudy", "icon": "cloud-sun", "color": "text-sky-300"},
+    3: {"label": "Overcast", "icon": "cloud", "color": "text-slate-400"},
+    45: {"label": "Foggy", "icon": "cloud-fog", "color": "text-slate-400"},
+    48: {"label": "Rime Fog", "icon": "cloud-fog", "color": "text-slate-400"},
+    51: {"label": "Light Drizzle", "icon": "cloud-drizzle", "color": "text-blue-300"},
+    53: {"label": "Moderate Drizzle", "icon": "cloud-drizzle", "color": "text-blue-400"},
+    55: {"label": "Dense Drizzle", "icon": "cloud-rain", "color": "text-blue-500"},
+    61: {"label": "Slight Rain", "icon": "cloud-rain", "color": "text-cyan-400"},
+    63: {"label": "Moderate Rain", "icon": "cloud-rain", "color": "text-cyan-500"},
+    65: {"label": "Heavy Rain", "icon": "cloud-rain-wind", "color": "text-indigo-400"},
+    71: {"label": "Slight Snow", "icon": "cloud-snow", "color": "text-indigo-200"},
+    73: {"label": "Moderate Snow", "icon": "snowflake", "color": "text-indigo-100"},
+    75: {"label": "Heavy Snow", "icon": "snowflake", "color": "text-white"},
+    80: {"label": "Rain Showers", "icon": "cloud-rain", "color": "text-cyan-400"},
+    81: {"label": "Moderate Showers", "icon": "cloud-rain", "color": "text-blue-400"},
+    82: {"label": "Violent Showers", "icon": "cloud-lightning", "color": "text-purple-400"},
+    95: {"label": "Thunderstorm", "icon": "zap", "color": "text-amber-400"},
+    96: {"label": "Thunderstorm & Hail", "icon": "cloud-lightning", "color": "text-purple-400"},
+    99: {"label": "Severe Storm", "icon": "tornado", "color": "text-rose-400"}
+}
 
-def get_db_connection():
+def get_weather_info(code):
+    return WEATHER_CODE_MAP.get(code, {"label": "Clear", "icon": "sun", "color": "text-amber-400"})
+
+def save_to_db(city, dt, temp, humidity, precipitation):
+    """Silently saves/upserts the searched city reading into MySQL database."""
     config = load_config()
     mysql_cfg = config.get("database", {}).get("mysql", {})
     try:
-        return pymysql.connect(
+        conn = pymysql.connect(
             host=mysql_cfg.get("host", "localhost"),
             port=mysql_cfg.get("port", 3306),
             user=mysql_cfg.get("user", "root"),
             password=mysql_cfg.get("password", ""),
             database=mysql_cfg.get("database", "weather_db"),
-            cursorclass=pymysql.cursors.DictCursor
+            autocommit=True
         )
+        with conn.cursor() as cur:
+            query = """
+            INSERT INTO weather_records (city, date, temperature, humidity, precipitation)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                temperature = VALUES(temperature),
+                humidity = VALUES(humidity),
+                precipitation = VALUES(precipitation);
+            """
+            cur.execute(query, (city, dt, temp, humidity, precipitation))
+        conn.close()
     except Exception:
-        return None
+        pass  # Don't fail the user UI if MySQL is briefly unreachable
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/api/status")
-def pipeline_status():
-    """Returns dynamic pipeline status and live database statistics."""
-    raw_files = glob.glob(os.path.join(RAW_DATA_DIR, "*.json"))
-    clean_files = glob.glob(os.path.join(PROCESSED_DATA_DIR, "*.csv"))
+@app.route("/api/search")
+def search_cities():
+    """Search for global cities by query text using Open-Meteo Geocoding API."""
+    query = request.args.get("q", "").strip()
+    if not query or len(query) < 2:
+        return jsonify([])
 
-    # Query MySQL for live record counts
-    total_db_records = 0
-    conn = get_db_connection()
-    if conn:
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) AS total FROM weather_records;")
-                res = cur.fetchone()
-                total_db_records = res["total"] if res else 0
-        finally:
-            conn.close()
-
-    config = load_config()
-    cities = config.get("cities", [])
-
-    stages = [
-        {"id": "extract", "name": "Phase 1: Extract", "week": "Weeks 1-2", "status": "Completed", "files_count": len(raw_files), "description": "Fetches weather JSON with exponential retries"},
-        {"id": "transform", "name": "Phase 2: Transform", "week": "Weeks 3-4", "status": "Completed", "files_count": len(clean_files), "description": "Pandas tabularization, typed casting & null safety"},
-        {"id": "load", "name": "Phase 3: Load", "week": "Weeks 5-6", "status": "Completed", "files_count": total_db_records, "description": f"MySQL idempotent upsert ({total_db_records} live records)"},
-        {"id": "mongo", "name": "Phase 4: Raw Lake", "week": "Week 7", "status": "Active", "files_count": len(raw_files), "description": "MongoDB staging layer (weather_lake.raw_weather)"},
-        {"id": "reliability", "name": "Phase 5: Reliability", "week": "Weeks 8-9", "status": "Completed", "files_count": 1, "description": "Centralized config.yaml, rotating logs, retry sessions"},
-        {"id": "automation", "name": "Phase 6: Automation", "week": "Week 10", "status": "Ready", "files_count": 1, "description": "Windows Task Scheduler batch runner ready"},
-        {"id": "analytics", "name": "Phase 7: SQL Analytics", "week": "Week 11", "status": "Completed", "files_count": 3, "description": "7-day rolling average & window functions"},
-        {"id": "tests", "name": "Phase 8: Tests & CI", "week": "Week 12", "status": "Passing (100%)", "files_count": 4, "description": "4/4 Pytest unit tests verified"}
-    ]
-
-    return jsonify({
-        "status": "online",
-        "pipeline_version": "1.0.0",
-        "raw_files_count": len(raw_files),
-        "clean_files_count": len(clean_files),
-        "total_database_records": total_db_records,
-        "monitored_cities": len(cities),
-        "stages": stages
-    })
-
-@app.route("/api/live_weather")
-def live_weather():
-    """Fetches real-time weather observations for monitored cities."""
-    config = load_config()
-    cities = config.get("cities", [])
-    results = []
-    for city in cities:
-        try:
-            url = config.get("api", {}).get("open_meteo_url", "https://api.open-meteo.com/v1/forecast")
-            params = {
-                "latitude": city["lat"],
-                "longitude": city["lon"],
-                "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
-            }
-            res = requests.get(url, params=params, timeout=5)
-            if res.status_code == 200:
-                current = res.json().get("current", {})
-                results.append({
-                    "city": city["name"],
-                    "country": city.get("country", ""),
-                    "temperature": current.get("temperature_2m", 0.0),
-                    "humidity": current.get("relative_humidity_2m", 0),
-                    "precipitation": current.get("precipitation", 0.0),
-                    "wind_speed": current.get("wind_speed_10m", 0.0),
-                    "time": current.get("time", datetime.now().isoformat()),
-                    "status": "online"
-                })
-        except Exception as e:
-            results.append({"city": city["name"], "error": str(e), "status": "offline"})
-    return jsonify(results)
-
-@app.route("/api/analytics/trends")
-def analytics_trends():
-    """Provides real SQL rolling average window calculations directly from MySQL."""
-    conn = get_db_connection()
-    dates = []
-    cities_data = {}
-    rolling_data = []
-
-    if conn:
-        try:
-            with conn.cursor() as cur:
-                # Get historical dates
-                cur.execute("SELECT DISTINCT DATE_FORMAT(date, '%Y-%m-%d %H:%i') AS dt FROM weather_records ORDER BY date;")
-                date_rows = cur.fetchall()
-                dates = [r["dt"] for r in date_rows]
-
-                # Get temperatures per city
-                cur.execute("SELECT city, temperature, DATE_FORMAT(date, '%Y-%m-%d %H:%i') as dt FROM weather_records ORDER BY date;")
-                rows = cur.fetchall()
-                for r in rows:
-                    c = r["city"].strip()
-                    if c not in cities_data:
-                        cities_data[c] = []
-                    cities_data[c].append(r["temperature"])
-
-                # Get rolling 7-day average for Bengaluru
-                cur.execute("""
-                SELECT 
-                    temperature,
-                    ROUND(AVG(temperature) OVER (
-                        PARTITION BY city ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-                    ), 2) AS rolling_avg
-                FROM weather_records
-                WHERE city LIKE '%Bengaluru%'
-                ORDER BY date;
-                """)
-                roll_rows = cur.fetchall()
-                rolling_data = [r["rolling_avg"] for r in roll_rows]
-        finally:
-            conn.close()
-
-    # Fallback to simulated if history is small (<3 points) for chart beauty
-    if len(dates) < 3:
-        dates = [f"Nov {d}" for d in range(10, 21)]
-        cities_data = {
-            "Bengaluru": [25.1, 25.4, 26.0, 25.8, 26.5, 27.0, 26.8, 25.9, 26.4, 27.2, 26.9],
-            "New York": [8.9, 9.2, 7.8, 8.5, 9.0, 10.2, 11.0, 10.5, 9.8, 9.3, 10.6],
-            "London": [6.0, 6.5, 7.1, 6.8, 7.5, 8.0, 7.9, 8.4, 8.1, 7.7, 8.1]
-        }
-        rolling_data = [25.1, 25.2, 25.5, 25.6, 25.8, 26.0, 26.1, 26.2, 26.3, 26.5, 26.6]
-
-    return jsonify({
-        "dates": dates,
-        "cities": cities_data,
-        "rolling_average_7d": {
-            "city": "Bengaluru",
-            "values": rolling_data
-        }
-    })
-
-@app.route("/api/raw_preview")
-def raw_preview():
-    """Reads the most recent raw JSON file."""
-    raw_files = glob.glob(os.path.join(RAW_DATA_DIR, "*.json"))
-    if not raw_files:
-        return jsonify({"found": False, "message": "No raw files found yet."})
-    latest_file = max(raw_files, key=os.path.getctime)
     try:
-        with open(latest_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return jsonify({"found": True, "filename": os.path.basename(latest_file), "data": data})
+        url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=6&language=en&format=json"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            results = []
+            for item in data.get("results", []):
+                admin = item.get("admin1", "")
+                country = item.get("country", "")
+                label = f"{item['name']}, {admin}, {country}" if admin else f"{item['name']}, {country}"
+                results.append({
+                    "name": item["name"],
+                    "country": country,
+                    "state": admin,
+                    "label": label,
+                    "lat": item["latitude"],
+                    "lon": item["longitude"],
+                    "timezone": item.get("timezone", "auto")
+                })
+            return jsonify(results)
     except Exception as e:
-        return jsonify({"found": False, "error": str(e)})
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify([])
+
+@app.route("/api/weather")
+def get_weather():
+    """
+    Fetches rich real-time, 24h hourly, and 7-day daily weather for latitude & longitude.
+    """
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+    city_name = request.args.get("city", "Selected Location")
+
+    if lat is None or lon is None:
+        # Default to Bengaluru if no coords passed
+        lat, lon, city_name = 12.9716, 77.5946, "Bengaluru"
+
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,surface_pressure",
+            "hourly": "temperature_2m,weather_code,precipitation_probability",
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum",
+            "timezone": "auto",
+            "forecast_days": 7
+        }
+        res = requests.get(url, params=params, timeout=6)
+        if res.status_code != 200:
+            return jsonify({"error": "Failed to fetch weather data from service"}), 500
+
+        data = res.json()
+        current = data.get("current", {})
+        hourly = data.get("hourly", {})
+        daily = data.get("daily", {})
+
+        weather_code = current.get("weather_code", 0)
+        weather_info = get_weather_info(weather_code)
+
+        # Build clean current object
+        current_obj = {
+            "city": city_name,
+            "temperature": round(current.get("temperature_2m", 0.0), 1),
+            "feels_like": round(current.get("apparent_temperature", 0.0), 1),
+            "humidity": current.get("relative_humidity_2m", 0),
+            "precipitation": current.get("precipitation", 0.0),
+            "wind_speed": round(current.get("wind_speed_10m", 0.0), 1),
+            "pressure": round(current.get("surface_pressure", 1013), 0),
+            "condition": weather_info["label"],
+            "icon": weather_info["icon"],
+            "color": weather_info["color"],
+            "time": current.get("time", datetime.now().isoformat())
+        }
+
+        # Build 24-Hour Forecast (next 24 hours from now)
+        hourly_list = []
+        times = hourly.get("time", [])
+        temps = hourly.get("temperature_2m", [])
+        codes = hourly.get("weather_code", [])
+        pop = hourly.get("precipitation_probability", [])
+
+        # Find starting index close to current time
+        now_hour_str = datetime.now().strftime("%Y-%m-%dT%H:00")
+        start_idx = 0
+        for i, t in enumerate(times):
+            if t >= now_hour_str:
+                start_idx = i
+                break
+
+        for i in range(start_idx, min(start_idx + 24, len(times))):
+            h_code = codes[i] if i < len(codes) else 0
+            h_info = get_weather_info(h_code)
+            # Parse hour like "2 PM"
+            dt_h = datetime.fromisoformat(times[i])
+            hourly_list.append({
+                "time": dt_h.strftime("%I %p").lstrip("0"),
+                "temp": round(temps[i], 1) if i < len(temps) else 0,
+                "icon": h_info["icon"],
+                "color": h_info["color"],
+                "pop": pop[i] if i < len(pop) else 0
+            })
+
+        # Build 7-Day Forecast
+        daily_list = []
+        d_times = daily.get("time", [])
+        d_max = daily.get("temperature_2m_max", [])
+        d_min = daily.get("temperature_2m_min", [])
+        d_codes = daily.get("weather_code", [])
+        d_rain = daily.get("precipitation_sum", [])
+        d_sunrise = daily.get("sunrise", [])
+        d_sunset = daily.get("sunset", [])
+
+        for i in range(len(d_times)):
+            d_code = d_codes[i] if i < len(d_codes) else 0
+            d_info = get_weather_info(d_code)
+            dt_d = datetime.fromisoformat(d_times[i])
+            day_label = "Today" if i == 0 else dt_d.strftime("%a")
+            daily_list.append({
+                "date": d_times[i],
+                "day": day_label,
+                "max_temp": round(d_max[i], 1) if i < len(d_max) else 0,
+                "min_temp": round(d_min[i], 1) if i < len(d_min) else 0,
+                "condition": d_info["label"],
+                "icon": d_info["icon"],
+                "color": d_info["color"],
+                "rain": round(d_rain[i], 1) if i < len(d_rain) else 0
+            })
+
+        # Today's sunrise & sunset
+        sunrise_str = ""
+        sunset_str = ""
+        if d_sunrise and len(d_sunrise) > 0:
+            sunrise_str = datetime.fromisoformat(d_sunrise[0]).strftime("%I:%M %p").lstrip("0")
+        if d_sunset and len(d_sunset) > 0:
+            sunset_str = datetime.fromisoformat(d_sunset[0]).strftime("%I:%M %p").lstrip("0")
+
+        current_obj["today_max"] = daily_list[0]["max_temp"] if daily_list else current_obj["temperature"]
+        current_obj["today_min"] = daily_list[0]["min_temp"] if daily_list else current_obj["temperature"]
+        current_obj["sunrise"] = sunrise_str
+        current_obj["sunset"] = sunset_str
+
+        # Auto-ingest into MySQL in background
+        db_time = current.get("time", datetime.now().strftime("%Y-%m-%d %H:%M:%S")).replace("T", " ")
+        if len(db_time) == 16:
+            db_time += ":00"
+        save_to_db(city_name, db_time, current_obj["temperature"], current_obj["humidity"], current_obj["precipitation"])
+
+        return jsonify({
+            "current": current_obj,
+            "hourly": hourly_list,
+            "daily": daily_list
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
